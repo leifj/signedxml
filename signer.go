@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ThalesGroup/crypto11"
 	"github.com/beevik/etree"
 )
 
@@ -131,6 +132,12 @@ func (s *Signer) setDigest() (err error) {
 	return nil
 }
 
+type P11SignerOpts struct {
+	Hash crypto.Hash
+}
+
+func (o *P11SignerOpts) HashFunc() crypto.Hash { return o.Hash }
+
 func (s *Signer) setSignature() error {
 	canonSignedInfo, err := s.canonAlgorithm.ProcessElement(s.signedInfo, "")
 	if err != nil {
@@ -151,17 +158,26 @@ func (s *Signer) setSignature() error {
 	switch signingAlgorithm.algorithm {
 	case "rsa":
 		pk, ok := s.privateKey.(*rsa.PrivateKey)
-		if !ok {
-			return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey)", s.privateKey)
+		if ok {
+			signature, err = rsa.SignPKCS1v15(rand.Reader, pk, signingAlgorithm.hash, hashed)
+		} else {
+			p11s, ok := s.privateKey.(crypto11.Signer)
+			if ok {
+				signerOpts := &P11SignerOpts{Hash: signingAlgorithm.hash}
+				signature, err = p11s.Sign(rand.Reader, hashed, signerOpts)
+			} else {
+				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or *crypto11.Signer)", s.privateKey)
+			}
 		}
-		signature, err = rsa.SignPKCS1v15(rand.Reader, pk, signingAlgorithm.hash, hashed)
 		/*
 			case "dsa":
 				h1, h2, err = dsa.Sign(rand.Reader, s.privateKey.(*dsa.PrivateKey), hashed)
 			case "ecdsa":
 				h1, h2, err = ecdsa.Sign(rand.Reader, s.privateKey.(*ecdsa.PrivateKey), hashed)
 		*/
+
 	}
+
 	if err != nil {
 		return err
 	}
