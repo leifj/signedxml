@@ -24,6 +24,10 @@ func init() {
 		x509.SHA256WithRSA: {algorithm: "rsa", hash: crypto.SHA256},
 		x509.SHA384WithRSA: {algorithm: "rsa", hash: crypto.SHA384},
 		x509.SHA512WithRSA: {algorithm: "rsa", hash: crypto.SHA512},
+		// RSA-PSS (RSASSA-PSS) algorithms
+		x509.SHA256WithRSAPSS: {algorithm: "rsa-pss", hash: crypto.SHA256},
+		x509.SHA384WithRSAPSS: {algorithm: "rsa-pss", hash: crypto.SHA384},
+		x509.SHA512WithRSAPSS: {algorithm: "rsa-pss", hash: crypto.SHA512},
 		// DSA not supported
 		// x509.DSAWithSHA1:  cryptoHash{algorithm: "dsa", hash: crypto.SHA1},
 		// x509.DSAWithSHA256:cryptoHash{algorithm: "dsa", hash: crypto.SHA256},
@@ -165,6 +169,22 @@ func (s *Signer) setSignature() error {
 			if ok {
 				signerOpts := &P11SignerOpts{Hash: signingAlgorithm.hash}
 				signature, err = p11s.Sign(rand.Reader, hashed, signerOpts)
+			} else {
+				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or *crypto11.Signer)", s.privateKey)
+			}
+		}
+	case "rsa-pss":
+		pssOptions := &rsa.PSSOptions{
+			SaltLength: rsa.PSSSaltLengthEqualsHash,
+			Hash:       signingAlgorithm.hash,
+		}
+		pk, ok := s.privateKey.(*rsa.PrivateKey)
+		if ok {
+			signature, err = rsa.SignPSS(rand.Reader, pk, signingAlgorithm.hash, hashed, pssOptions)
+		} else {
+			p11s, ok := s.privateKey.(crypto11.Signer)
+			if ok {
+				signature, err = p11s.Sign(rand.Reader, hashed, pssOptions)
 			} else {
 				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or *crypto11.Signer)", s.privateKey)
 			}
