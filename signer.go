@@ -222,7 +222,7 @@ type P11SignerOpts struct {
 func (o *P11SignerOpts) HashFunc() crypto.Hash { return o.Hash }
 
 func (s *Signer) setSignature() error {
-	canonSignedInfo, err := s.canonAlgorithm.ProcessElement(s.signedInfo, "")
+	canonSignedInfo, err := s.canonAlgorithm.ProcessElement(s.signedInfo, s.canonTransform)
 	if err != nil {
 		return err
 	}

@@ -100,13 +100,14 @@ var signatureAlgorithms map[string]x509.SignatureAlgorithm
 
 // signatureData provides options for verifying a signed XML document
 type signatureData struct {
-	xml            *etree.Document
-	signature      *etree.Element
-	signedInfo     *etree.Element
-	sigValue       string
-	sigAlgorithm   x509.SignatureAlgorithm
-	canonAlgorithm CanonicalizationAlgorithm
-	refIDAttribute string
+	xml              *etree.Document
+	signature        *etree.Element
+	signedInfo       *etree.Element
+	sigValue         string
+	sigAlgorithm     x509.SignatureAlgorithm
+	canonAlgorithm   CanonicalizationAlgorithm
+	canonTransform   string // InclusiveNamespaces or other transform content from CanonicalizationMethod
+	refIDAttribute   string
 }
 
 // SetSignature can be used to assign an external signature for the XML doc
@@ -207,6 +208,7 @@ func (s *signatureData) parseSigAlgorithm() error {
 
 func (s *signatureData) parseCanonAlgorithm() error {
 	s.canonAlgorithm = nil
+	s.canonTransform = ""
 	canonMethod := s.signedInfo.SelectElement("CanonicalizationMethod")
 
 	var canonAlgoURI string
@@ -218,6 +220,13 @@ func (s *signatureData) parseCanonAlgorithm() error {
 	if canonAlgoURI == "" {
 		return errors.New("signedxml: Unable to find Algorithm in " +
 			"CanonicalizationMethod element")
+	}
+
+	// Extract any child content (e.g., InclusiveNamespaces) for exc-c14n
+	if canonMethod.ChildElements() != nil && len(canonMethod.ChildElements()) > 0 {
+		tDoc := etree.NewDocument()
+		tDoc.SetRoot(canonMethod.Copy())
+		s.canonTransform, _ = tDoc.WriteToString()
 	}
 
 	canonAlgo, ok := CanonicalizationAlgorithms[canonAlgoURI]
