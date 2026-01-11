@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ThalesGroup/crypto11"
 	"github.com/beevik/etree"
 )
 
@@ -248,12 +247,13 @@ func (s *Signer) setSignature() error {
 		if ok {
 			signature, err = rsa.SignPKCS1v15(rand.Reader, pk, signingAlgorithm.hash, hashed)
 		} else {
-			p11s, ok := s.privateKey.(crypto11.Signer)
+			// Support any crypto.Signer implementation (including PKCS#11/HSM signers)
+			signer, ok := s.privateKey.(crypto.Signer)
 			if ok {
 				signerOpts := &P11SignerOpts{Hash: signingAlgorithm.hash}
-				signature, err = p11s.Sign(rand.Reader, hashed, signerOpts)
+				signature, err = signer.Sign(rand.Reader, hashed, signerOpts)
 			} else {
-				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or *crypto11.Signer)", s.privateKey)
+				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or crypto.Signer)", s.privateKey)
 			}
 		}
 	case "rsa-pss":
@@ -265,11 +265,12 @@ func (s *Signer) setSignature() error {
 		if ok {
 			signature, err = rsa.SignPSS(rand.Reader, pk, signingAlgorithm.hash, hashed, pssOptions)
 		} else {
-			p11s, ok := s.privateKey.(crypto11.Signer)
+			// Support any crypto.Signer implementation (including PKCS#11/HSM signers)
+			signer, ok := s.privateKey.(crypto.Signer)
 			if ok {
-				signature, err = p11s.Sign(rand.Reader, hashed, pssOptions)
+				signature, err = signer.Sign(rand.Reader, hashed, pssOptions)
 			} else {
-				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or *crypto11.Signer)", s.privateKey)
+				return fmt.Errorf("unexpected %T (expected *rsa.PrivateKey or crypto.Signer)", s.privateKey)
 			}
 		}
 	case "ed25519":
@@ -279,13 +280,13 @@ func (s *Signer) setSignature() error {
 		if ok {
 			signature = ed25519.Sign(pk, []byte(canonSignedInfo))
 		} else {
-			p11s, ok := s.privateKey.(crypto11.Signer)
+			// Support any crypto.Signer implementation (including PKCS#11/HSM signers)
+			signer, ok := s.privateKey.(crypto.Signer)
 			if ok {
-				// For PKCS#11, use the standard crypto.Signer interface
-				// Ed25519 with crypto.Signer uses Hash(0) to indicate no pre-hashing
-				signature, err = p11s.Sign(rand.Reader, []byte(canonSignedInfo), crypto.Hash(0))
+				// For Ed25519, use Hash(0) to indicate no pre-hashing
+				signature, err = signer.Sign(rand.Reader, []byte(canonSignedInfo), crypto.Hash(0))
 			} else {
-				return fmt.Errorf("unexpected %T (expected ed25519.PrivateKey or crypto11.Signer)", s.privateKey)
+				return fmt.Errorf("unexpected %T (expected ed25519.PrivateKey or crypto.Signer)", s.privateKey)
 			}
 		}
 		/*
