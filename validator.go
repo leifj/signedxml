@@ -1,7 +1,6 @@
 package signedxml
 
 import (
-	"crypto"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -245,7 +244,11 @@ func (v *Validator) validateReferences() (referenced []*etree.Document, err erro
 					if transform.ChildElements() != nil {
 						tDoc := etree.NewDocument()
 						tDoc.SetRoot(transform.Copy())
-						transformContent, _ = tDoc.WriteToString()
+						content, err := tDoc.WriteToString()
+						if err != nil {
+							return nil, err
+						}
+						transformContent = content
 					}
 
 					canonicalXML, err = canonAlgo.ProcessElement(refElement, transformContent)
@@ -351,8 +354,12 @@ func isRSAPSSAlgorithm(alg x509.SignatureAlgorithm) bool {
 
 // isECDSAAlgorithm returns true if the algorithm is ECDSA
 func isECDSAAlgorithm(alg x509.SignatureAlgorithm) bool {
-	return alg == x509.ECDSAWithSHA1 || alg == x509.ECDSAWithSHA256 ||
-		alg == x509.ECDSAWithSHA384 || alg == x509.ECDSAWithSHA512
+	switch alg { //nolint:exhaustive
+	case x509.ECDSAWithSHA1, x509.ECDSAWithSHA256, x509.ECDSAWithSHA384, x509.ECDSAWithSHA512:
+		return true
+	default:
+		return false
+	}
 }
 
 // convertECDSARawToASN1 converts an ECDSA signature from the raw r||s
@@ -380,15 +387,8 @@ func (v *Validator) verifyRSAPSSSignature(certDer, data, sig []byte) error {
 		return err
 	}
 
-	var hash crypto.Hash
-	switch v.sigAlgorithm {
-	case x509.SHA256WithRSAPSS:
-		hash = crypto.SHA256
-	case x509.SHA384WithRSAPSS:
-		hash = crypto.SHA384
-	case x509.SHA512WithRSAPSS:
-		hash = crypto.SHA512
-	default:
+	hash, ok := rsaPSSHashAlgorithms[v.sigAlgorithm]
+	if !ok {
 		return fmt.Errorf("unsupported RSA-PSS algorithm: %v", v.sigAlgorithm)
 	}
 

@@ -98,6 +98,14 @@ var CanonicalizationAlgorithms map[string]CanonicalizationAlgorithm
 var hashAlgorithms map[string]crypto.Hash
 var signatureAlgorithms map[string]x509.SignatureAlgorithm
 
+// rsaPSSHashAlgorithms maps RSA-PSS signature algorithms to their corresponding
+// hash functions. Used by both signer and validator.
+var rsaPSSHashAlgorithms = map[x509.SignatureAlgorithm]crypto.Hash{
+	x509.SHA256WithRSAPSS: crypto.SHA256,
+	x509.SHA384WithRSAPSS: crypto.SHA384,
+	x509.SHA512WithRSAPSS: crypto.SHA512,
+}
+
 // signatureData provides options for verifying a signed XML document
 type signatureData struct {
 	xml            *etree.Document
@@ -226,7 +234,11 @@ func (s *signatureData) parseCanonAlgorithm() error {
 	if canonMethod.ChildElements() != nil && len(canonMethod.ChildElements()) > 0 {
 		tDoc := etree.NewDocument()
 		tDoc.SetRoot(canonMethod.Copy())
-		s.canonTransform, _ = tDoc.WriteToString()
+		transformContent, err := tDoc.WriteToString()
+		if err != nil {
+			return err
+		}
+		s.canonTransform = transformContent
 	}
 
 	canonAlgo, ok := CanonicalizationAlgorithms[canonAlgoURI]
@@ -364,21 +376,30 @@ func processTransform(transform *etree.Element,
 	return docOut, nil
 }
 
-func calculateHash(reference *etree.Element, doc *etree.Document) (string, error) {
+// getDigestAlgorithm extracts the digest hash algorithm from a Reference element.
+func getDigestAlgorithm(reference *etree.Element) (crypto.Hash, error) {
 	digestMethodElement := reference.SelectElement("DigestMethod")
 	if digestMethodElement == nil {
-		return "", errors.New("signedxml: unable to find DigestMethod")
+		return 0, errors.New("signedxml: unable to find DigestMethod")
 	}
 
 	digestMethodURI := digestMethodElement.SelectAttrValue("Algorithm", "")
 	if digestMethodURI == "" {
-		return "", errors.New("signedxml: unable to find Algorithm in DigestMethod")
+		return 0, errors.New("signedxml: unable to find Algorithm in DigestMethod")
 	}
 
 	digestAlgo, ok := hashAlgorithms[digestMethodURI]
 	if !ok {
-		return "", fmt.Errorf("signedxml: unable to find matching hash"+
+		return 0, fmt.Errorf("signedxml: unable to find matching hash"+
 			"algorithm for %s in hashAlgorithms", digestMethodURI)
+	}
+	return digestAlgo, nil
+}
+
+func calculateHash(reference *etree.Element, doc *etree.Document) (string, error) {
+	digestAlgo, err := getDigestAlgorithm(reference)
+	if err != nil {
+		return "", err
 	}
 
 	// Use proper C14N canonicalization for the digest calculation.
@@ -401,20 +422,9 @@ func calculateHash(reference *etree.Element, doc *etree.Document) (string, error
 // calculateHashFromString calculates the digest of an already-canonicalized XML string.
 // This is used when c14n transforms have been applied and produced a canonical string.
 func calculateHashFromString(reference *etree.Element, xmlString string) (string, error) {
-	digestMethodElement := reference.SelectElement("DigestMethod")
-	if digestMethodElement == nil {
-		return "", errors.New("signedxml: unable to find DigestMethod")
-	}
-
-	digestMethodURI := digestMethodElement.SelectAttrValue("Algorithm", "")
-	if digestMethodURI == "" {
-		return "", errors.New("signedxml: unable to find Algorithm in DigestMethod")
-	}
-
-	digestAlgo, ok := hashAlgorithms[digestMethodURI]
-	if !ok {
-		return "", fmt.Errorf("signedxml: unable to find matching hash"+
-			"algorithm for %s in hashAlgorithms", digestMethodURI)
+	digestAlgo, err := getDigestAlgorithm(reference)
+	if err != nil {
+		return "", err
 	}
 
 	h := digestAlgo.New()
@@ -429,20 +439,9 @@ func calculateHashFromString(reference *etree.Element, xmlString string) (string
 // canonicalization. This is used when transforms have already been applied
 // (including any c14n transforms) and the document contains the canonical form.
 func calculateHashRaw(reference *etree.Element, doc *etree.Document) (string, error) {
-	digestMethodElement := reference.SelectElement("DigestMethod")
-	if digestMethodElement == nil {
-		return "", errors.New("signedxml: unable to find DigestMethod")
-	}
-
-	digestMethodURI := digestMethodElement.SelectAttrValue("Algorithm", "")
-	if digestMethodURI == "" {
-		return "", errors.New("signedxml: unable to find Algorithm in DigestMethod")
-	}
-
-	digestAlgo, ok := hashAlgorithms[digestMethodURI]
-	if !ok {
-		return "", fmt.Errorf("signedxml: unable to find matching hash"+
-			"algorithm for %s in hashAlgorithms", digestMethodURI)
+	digestAlgo, err := getDigestAlgorithm(reference)
+	if err != nil {
+		return "", err
 	}
 
 	// Serialize the document as-is. The transforms have already produced
@@ -468,20 +467,9 @@ func calculateHashRaw(reference *etree.Element, doc *etree.Document) (string, er
 // in its original document context. This preserves the element's namespace context
 // which is essential for proper C14N canonicalization with inherited namespaces.
 func calculateHashFromElement(reference *etree.Element, element *etree.Element) (string, error) {
-	digestMethodElement := reference.SelectElement("DigestMethod")
-	if digestMethodElement == nil {
-		return "", errors.New("signedxml: unable to find DigestMethod")
-	}
-
-	digestMethodURI := digestMethodElement.SelectAttrValue("Algorithm", "")
-	if digestMethodURI == "" {
-		return "", errors.New("signedxml: unable to find Algorithm in DigestMethod")
-	}
-
-	digestAlgo, ok := hashAlgorithms[digestMethodURI]
-	if !ok {
-		return "", fmt.Errorf("signedxml: unable to find matching hash"+
-			"algorithm for %s in hashAlgorithms", digestMethodURI)
+	digestAlgo, err := getDigestAlgorithm(reference)
+	if err != nil {
+		return "", err
 	}
 
 	// Use proper C14N canonicalization for the digest calculation.

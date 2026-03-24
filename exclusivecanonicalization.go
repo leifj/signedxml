@@ -86,9 +86,6 @@ func (e ExclusiveCanonicalization) ProcessElement(inputXML *etree.Element, trans
 	doc := etree.NewDocument()
 	doc.SetRoot(inputXML.Copy())
 
-	// Store ancestor namespaces so processDocument can use them
-	e.namespaces = ancestorNamespaces
-
 	return e.processDocumentWithAncestorNS(doc, transformXML, ancestorNamespaces)
 }
 

@@ -1,15 +1,13 @@
 module github.com/leifj/signedxml
 
-go 1.23.6
-
-toolchain go1.24.3
+go 1.25.0
 
 require (
 	github.com/beevik/etree v1.5.1
 	github.com/russellhaering/goxmldsig v1.5.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
+	golang.org/x/crypto v0.49.0
 )
 
 require (
