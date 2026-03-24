@@ -379,8 +379,6 @@ func isECDSAAlgorithm(alg x509.SignatureAlgorithm) bool {
 	}
 }
 
-
-
 // verifyRSAPSSSignature manually verifies an RSA-PSS signature for certificates
 // with RSA-PSS public keys that Go's x509 library can't handle
 func (v *Validator) verifyRSAPSSSignature(certDer, data, sig []byte) error {
