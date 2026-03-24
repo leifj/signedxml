@@ -52,6 +52,28 @@ Other packages that provide similar functionality rely on C libraries, which mak
   - http://www.w3.org/2001/10/xml-exc-c14n#
   - http://www.w3.org/2001/10/xml-exc-c14n#WithComments
 
+### Extensible Crypto Support (Siros Fork)
+
+This fork adds support for non-standard certificate types (e.g. brainpool curves)
+via `go-cryptoutil` extensions. When crypto extensions are set, both certificate parsing
+and signature verification fall back to extension parsers/verifiers if the standard
+library cannot handle the certificate or algorithm.
+
+```go
+import (
+    "github.com/sirosfoundation/go-cryptoutil"
+    "github.com/sirosfoundation/go-cryptoutil/brainpool"
+    "github.com/sirosfoundation/signedxml"
+)
+
+ext := cryptoutil.New()
+brainpool.Register(ext)
+
+validator, err := signedxml.NewValidator(xmlString)
+validator.SetCryptoExtensions(ext)
+xml, err := validator.ValidateReferences()
+```
+
 ### Examples
 
 #### Validating signed XML
