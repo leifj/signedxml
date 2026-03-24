@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/beevik/etree"
-	"github.com/leifj/signedxml"
+	"github.com/sirosfoundation/signedxml"
 )
 
 func main() {

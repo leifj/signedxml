@@ -1,4 +1,4 @@
-module github.com/leifj/signedxml
+module github.com/sirosfoundation/signedxml
 
 go 1.25.0
 
