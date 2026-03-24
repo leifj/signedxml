@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -80,6 +81,7 @@ func extractRSAPSSPublicKey(certDer []byte) (*rsa.PublicKey, error) {
 type Validator struct {
 	Certificates []x509.Certificate
 	signingCert  x509.Certificate
+	cryptoExt    *cryptoutil.Extensions
 	signatureData
 }
 
@@ -91,6 +93,13 @@ func NewValidator(xml string) (*Validator, error) {
 	}
 	v := &Validator{signatureData: signatureData{xml: doc}}
 	return v, nil
+}
+
+// SetCryptoExtensions sets the crypto extensions for extended algorithm support
+// (e.g. brainpool curves). When set, certificate parsing and signature verification
+// will use the extensions to handle non-standard algorithms.
+func (v *Validator) SetCryptoExtensions(ext *cryptoutil.Extensions) {
+	v.cryptoExt = ext
 }
 
 // SetReferenceIDAttribute set the referenceIDAttribute
@@ -328,13 +337,20 @@ func (v *Validator) validateSignature() error {
 
 	v.signingCert = x509.Certificate{}
 	for _, cert := range v.Certificates {
-		err := cert.CheckSignature(v.sigAlgorithm, []byte(canonSignedInfo), sig)
-		if err == nil {
-			v.signingCert = cert
-			return nil
+		// Use crypto extensions for CheckSignature if available (supports brainpool etc.)
+		if v.cryptoExt != nil {
+			if err := v.cryptoExt.CheckSignature(&cert, v.sigAlgorithm, []byte(canonSignedInfo), sig); err == nil {
+				v.signingCert = cert
+				return nil
+			}
+		} else {
+			if err := cert.CheckSignature(v.sigAlgorithm, []byte(canonSignedInfo), sig); err == nil {
+				v.signingCert = cert
+				return nil
+			}
 		}
-		// If standard verification failed with "algorithm unimplemented" and we're using
-		// RSA-PSS, try manual verification - this handles certificates with RSA-PSS public keys
+		// If standard verification failed and we're using RSA-PSS, try manual verification
+		// - this handles certificates with RSA-PSS public keys
 		if cert.PublicKey == nil && isRSAPSSAlgorithm(v.sigAlgorithm) {
 			verifyErr := v.verifyRSAPSSSignature(cert.Raw, []byte(canonSignedInfo), sig)
 			if verifyErr == nil {
@@ -397,7 +413,7 @@ func (v *Validator) loadCertificates() error {
 	if len(v.Certificates) < 1 {
 		keydata := v.xml.FindElements(".//X509Certificate")
 		for _, key := range keydata {
-			cert, err := getCertFromPEMString(key.Text())
+			cert, err := v.parseCertificate(key.Text())
 			if err != nil {
 				log.Printf("signedxml: Unable to load certificate: (%s). "+
 					"Looking for another cert.", err)
@@ -411,4 +427,24 @@ func (v *Validator) loadCertificates() error {
 		return errors.New("signedxml: a certificate is required, but was not found")
 	}
 	return nil
+}
+
+// parseCertificate parses a base64-encoded DER certificate, using crypto
+// extensions when available for non-standard algorithm support.
+func (v *Validator) parseCertificate(pemString string) (*x509.Certificate, error) {
+	certPEM := fmt.Sprintf("-----BEGIN CERTIFICATE-----\n%s\n-----END CERTIFICATE-----",
+		pemString)
+
+	pemBlock, _ := pem.Decode([]byte(certPEM))
+	if pemBlock == nil {
+		return nil, errors.New("Could not parse Certificate PEM")
+	}
+	if pemBlock.Type != "CERTIFICATE" {
+		return nil, errors.New("Found wrong key type")
+	}
+
+	if v.cryptoExt != nil {
+		return v.cryptoExt.ParseCertificate(pemBlock.Bytes)
+	}
+	return x509.ParseCertificate(pemBlock.Bytes)
 }
