@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/beevik/etree"
+	"github.com/sirosfoundation/go-cryptoutil"
 )
 
 // OID for RSA-PSS: 1.2.840.113549.1.1.10
@@ -318,7 +319,7 @@ func (v *Validator) validateSignature() error {
 	// XML DSig encodes ECDSA signatures as raw r||s concatenation (RFC 4050),
 	// but Go's x509.CheckSignature expects ASN.1 DER encoding.
 	if isECDSAAlgorithm(v.sigAlgorithm) {
-		derSig, convErr := convertECDSARawToASN1(sig)
+		derSig, convErr := cryptoutil.ECDSARawToASN1(sig)
 		if convErr != nil {
 			return convErr
 		}
@@ -362,22 +363,7 @@ func isECDSAAlgorithm(alg x509.SignatureAlgorithm) bool {
 	}
 }
 
-// convertECDSARawToASN1 converts an ECDSA signature from the raw r||s
-// concatenation format used by XML DSig (RFC 4050) to the ASN.1 DER
-// encoding expected by Go's x509.Certificate.CheckSignature.
-// The input must be an even number of bytes, with r and s each occupying
-// half the total length.
-func convertECDSARawToASN1(raw []byte) ([]byte, error) {
-	if len(raw) == 0 || len(raw)%2 != 0 {
-		return nil, fmt.Errorf("signedxml: invalid ECDSA signature length %d", len(raw))
-	}
-	half := len(raw) / 2
-	r := new(big.Int).SetBytes(raw[:half])
-	s := new(big.Int).SetBytes(raw[half:])
-	return asn1.Marshal(struct {
-		R, S *big.Int
-	}{r, s})
-}
+
 
 // verifyRSAPSSSignature manually verifies an RSA-PSS signature for certificates
 // with RSA-PSS public keys that Go's x509 library can't handle

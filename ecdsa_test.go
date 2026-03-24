@@ -10,6 +10,8 @@ import (
 	"encoding/asn1"
 	"math/big"
 	"testing"
+
+	"github.com/sirosfoundation/go-cryptoutil"
 )
 
 func TestIsECDSAAlgorithm(t *testing.T) {
@@ -32,7 +34,7 @@ func TestIsECDSAAlgorithm(t *testing.T) {
 	}
 }
 
-func TestConvertECDSARawToASN1(t *testing.T) {
+func TestECDSARawToASN1(t *testing.T) {
 	t.Run("P256_roundtrip", func(t *testing.T) {
 		key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
@@ -52,7 +54,7 @@ func TestConvertECDSARawToASN1(t *testing.T) {
 		copy(raw[32-len(rBytes):32], rBytes)
 		copy(raw[64-len(sBytes):64], sBytes)
 
-		der, err := convertECDSARawToASN1(raw)
+		der, err := cryptoutil.ECDSARawToASN1(raw)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -94,7 +96,7 @@ func TestConvertECDSARawToASN1(t *testing.T) {
 		copy(raw[48-len(rBytes):48], rBytes)
 		copy(raw[96-len(sBytes):96], sBytes)
 
-		der, err := convertECDSARawToASN1(raw)
+		der, err := cryptoutil.ECDSARawToASN1(raw)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -109,14 +111,14 @@ func TestConvertECDSARawToASN1(t *testing.T) {
 	})
 
 	t.Run("empty_input", func(t *testing.T) {
-		_, err := convertECDSARawToASN1([]byte{})
+		_, err := cryptoutil.ECDSARawToASN1([]byte{})
 		if err == nil {
 			t.Error("expected error for empty input")
 		}
 	})
 
 	t.Run("odd_length", func(t *testing.T) {
-		_, err := convertECDSARawToASN1(make([]byte, 63))
+		_, err := cryptoutil.ECDSARawToASN1(make([]byte, 63))
 		if err == nil {
 			t.Error("expected error for odd-length input")
 		}
